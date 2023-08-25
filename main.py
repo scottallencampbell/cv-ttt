@@ -308,23 +308,64 @@ def read_cell(contour, cell, min_area, max_area):
             solidity = (contour_area) / float(hullArea)            
             return "O" if solidity > .5 else "X"
             
-def decorate_gameboard(img, end_points, cells, x_contours, o_contours):    
+def get_decorated_gameboard(img, end_points, cells, x_contours, o_contours):    
+    h, w, c = img.shape
+    decorated = 0 * np.ones(shape=(h, w, c), dtype=np.uint8)
+
     for contour in x_contours:
-        cv2.drawContours(img, [contour], 0, (0, 255, 0), 3)
+        cv2.drawContours(decorated, [contour], 0, (0, 255, 0), 3)
     
     for contour in o_contours:
-        cv2.drawContours(img, [contour], 0, (255, 255, 0), 3)
+        cv2.drawContours(decorated, [contour], 0, (255, 255, 0), 3)
     
     for i, p in enumerate(end_points):
-        cv2.circle(img, p, 8, (200, 200, 200), 2)
-        cv2.putText(img, str(i), p, cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+        cv2.circle(decorated, p, 8, (200, 200, 200), 2)
+        cv2.putText(decorated, str(i), p, cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
         
     for i, cell in enumerate(cells):
-        cv2.polylines(img, [cell], True, (0, 0, 255), 2)
+        cv2.polylines(decorated, [cell], True, (0, 0, 255), 2)
         center_of_mass = get_center_of_mass(cell[:,0])
-        cv2.putText(img, str(i), center_of_mass, cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
+        cv2.putText(decorated, str(i), center_of_mass, cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
 
-        
+    return decorated
+
+def get_virtual_gameboard(img, board):
+    spacing = 100
+    offset_x = 120
+    offset_y = 70
+    o_radius = int(spacing / 5)
+    x_length = int(spacing / 7)
+    stroke = 8
+
+    h, w, c = img.shape
+    virtual = 255 * np.ones(shape=(h, w, c), dtype=np.uint8)
+    lines = [[[1, 0], [1, 3]], [[2, 0], [2, 3]], [[0, 1], [3, 1]], [[0, 2], [3, 2]]];
+
+    for line in lines: 
+        cv2.line(virtual, (
+            offset_x + line[0][0]*spacing, \
+            offset_y + line[0][1]*spacing), (\
+            offset_x + line[1][0]*spacing, \
+            offset_y + line[1][1]*spacing), (0, 0, 255), 4)
+
+    for i in range(0, 3):
+        for j in range(0, 3):
+            content = board[i * 3 + j]
+            
+            if content != " ":
+                x = int(spacing * 1 * j + offset_x + spacing / 2)
+                y = int(spacing * 1* i + offset_y + spacing / 2)
+                
+                if content == "O":
+                    cv2.circle(virtual, (x,y), o_radius, (255, 255, 0), stroke)
+                elif content == "X":
+                    cv2.line(virtual, (x-x_length, y-x_length), (x+x_length, y+x_length), (0, 255, 0), stroke)
+                    cv2.line(virtual, (x+x_length, y-x_length), (x-x_length, y+x_length), (0, 255, 0), stroke)
+    
+    return virtual
+
+
+    
 original = cv2.imread(image_path)
 copy = cv2.resize(original, (0,0), fx=0.5, fy=0.5) 
 gray, blur, thresh, processed = pre_process(copy)
@@ -334,7 +375,6 @@ center_of_mass = get_center_of_largest_contour(thresh)
 contour_points = get_board_contour_points(thresh)
 end_points = get_end_points(contour_points, center_of_mass, 8)
 cells = get_cells(end_points)
-
 
 #corner_top_left = (min(end_points[5][0], end_points[6][0]), min(end_points[7][1], end_points[0][1]))
 #corner_top_right = (max(end_points[1][0], end_points[2][0]), min(end_points[7][1], end_points[0][1]))
@@ -347,41 +387,8 @@ cells = get_cells(end_points)
 board = [' '] * 9
 board, x_contours, o_contours = read_cells(board, thresh, cells)
 
-h, w, c = copy.shape
-virtual = 255 * np.ones(shape=(h, w, c), dtype=np.uint8)
-decorated = 0 * np.ones(shape=(h, w, c), dtype=np.uint8)
-
-spacing = 100
-offset_x = 120
-offset_y = 70
-o_radius = int(spacing / 5)
-x_length = int(spacing / 7)
-stroke = 8
-
-lines = [[[1, 0], [1, 3]], [[2, 0], [2, 3]], [[0, 1], [3, 1]], [[0, 2], [3, 2]]];
-
-for line in lines: 
-    cv2.line(virtual, (
-        offset_x + line[0][0]*spacing, \
-        offset_y + line[0][1]*spacing), (\
-        offset_x + line[1][0]*spacing, \
-        offset_y + line[1][1]*spacing), (0, 0, 255), 4)
-
-for i in range(0, 3):
-    for j in range(0, 3):
-        content = board[i * 3 + j]
-        
-        if content != " ":
-            x = int(spacing * 1 * j + offset_x + spacing / 2)
-            y = int(spacing * 1* i + offset_y + spacing / 2)
-            
-            if content == "O":
-                cv2.circle(virtual, (x,y), o_radius, (255, 255, 0), stroke)
-            elif content == "X":
-                cv2.line(virtual, (x-x_length, y-x_length), (x+x_length, y+x_length), (0, 255, 0), stroke)
-                cv2.line(virtual, (x+x_length, y-x_length), (x-x_length, y+x_length), (0, 255, 0), stroke)
-  
-decorate_gameboard(decorated, end_points, cells, x_contours, o_contours)
+decorated = get_decorated_gameboard(rotated, end_points, cells, x_contours, o_contours)
+virtual = get_virtual_gameboard(rotated, board)
 
 left = np.concatenate((copy, decorated), axis=0)
 right = np.concatenate((add_channel_to_grayscale(thresh), virtual), axis=0)
