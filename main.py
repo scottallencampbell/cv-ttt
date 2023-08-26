@@ -2,88 +2,95 @@ import math
 import cv2
 import numpy as np
 
-image_path = 'images/hash-9.png'
-
 def pre_process(img):
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    blur = cv2.GaussianBlur(gray, (5,5), 0)
-    thresh = cv2.adaptiveThreshold(blur, 255, 1, 1, 11, 2)
-    thin = cv2.ximgproc.thinning(thresh)
-    return gray, blur, thresh, thin
+    max_width, max_height = 640, 480
+    f1 = max_width / img.shape[1]
+    f2 = max_height / img.shape[0]
+    f = min(f1, f2) 
+    dim = (int(img.shape[1] * f), int(img.shape[0] * f))
+    copy = cv2.resize(img, dim)
     
-def add_channel_to_grayscale(img):
-    return np.stack((img,)*3, axis=-1)
-    
-def rotate_to_orthogonal(copy, processed, gray):    
-    try:
-        interior_box, _ = get_interior_bounding_box(processed, gray)
-    except:
-        raise Exception("Failed to find an interior region, gameboard does not appear to be complete")
-
-    interior_box_rotation = get_angle(interior_box[0], interior_box[1])
-    
-    rotated = rotate_image(copy, interior_box_rotation)
-    gray, _, thresh, processed = pre_process(rotated)
-    return rotated, gray, thresh, processed
-
-def get_interior_bounding_box(thin, gray): 
-    contours, _= cv2.findContours(thin, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    max_area = 0
-    
-    for i in contours:
-        area = cv2.contourArea(i)
-        
-        if area > 1000 and area > max_area:
-            max_area = area
-            best_cnt = i
-
-    mask = np.zeros((gray.shape), np.uint8)
-    cv2.drawContours(mask, [best_cnt], 0, 255, -1)
-    cv2.drawContours(mask, [best_cnt], 0, 0, 2)
-
-    out = np.zeros_like(gray)
-    out[mask == 255] = gray[mask == 255]
-
-    out_blur = cv2.GaussianBlur(out, (5,5), 0)
-    out_thresh = cv2.adaptiveThreshold(out_blur, 255, 1, 1, 11, 2)
-
-    contours, _ = cv2.findContours(out_thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    rect = cv2.minAreaRect(contours[0])
-    box = np.intp(cv2.boxPoints(rect))
-    center_point = get_center_of_mass(box)
+    gray = cv2.cvtColor(copy, cv2.COLOR_BGR2GRAY)         
+    blur = cv2.GaussianBlur(gray, (0,0), sigmaX=33, sigmaY=33)
+    divide = cv2.divide(gray, blur, scale=255)
+    thresh = cv2.threshold(divide, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)[1]
+    inverse = (255 - thresh)    
+    thin = cv2.ximgproc.thinning(inverse)
+    kernel = np.ones((3,3),np.uint8)
+    dilated = cv2.dilate(thin, kernel, iterations = 2)
    
-    
-    return box, center_point
+    return copy, gray, blur, thresh, dilated
 
-def get_end_points(points, center_of_mass, max_points):
+def get_points_sorted_by_distance(points, center_of_mass):
     distances = []
+    
+    for p in points:
+        distances.append(get_distance(p, center_of_mass))
         
-    for i, p in enumerate(points):
-        distance = get_distance(p, center_of_mass)
-        distances.append(distance)
-
     arr1 = np.array(distances)
     arr2 = np.array(points)    
     indexes = arr1.argsort()
-    points_by_distance = arr2[indexes[::-1]]        
-    max_distance_points = points_by_distance[:max_points]
-    points_by_angle = sort_end_points_by_angle(max_distance_points, center_of_mass)    
+    
+    return arr2[indexes]
+    
+def get_points_sorted_by_angle(points, center_of_mass):
+    angles = []
+
+    for p in points:
+        angle = get_angle(center_of_mass, p)
+        angles.append(angle)
         
-    if len(points_by_angle) != 8:
-        raise Exception("Failed to find 8 line segment end points, gameboard does not appear to be complete")
-
-    test_end_point_orthogonality(points_by_angle)
-
+    arr1 = np.array(angles)
+    arr2 = np.array(points)    
+    indexes = arr1.argsort()
+    points_by_angle = arr2[indexes[::-1]]
+    
     return points_by_angle
 
-def get_distance(p1, p2):
-    dis = ((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2) ** 0.5
-    return dis
+def get_rotation(img):    
+    contour_points = get_board_contour_points(img)
+    center_of_mass = get_center_of_mass(contour_points)
+    points = get_points_sorted_by_distance(contour_points, center_of_mass)
+    
+    if len(points) != 12:
+        raise Exception(f'Failed to detect gameboard, {len(points)} out of expected 12 contour points were found')
 
+    interior_points_by_distance = points[0:4]
+    interior_points_by_angle = get_points_sorted_by_angle(interior_points_by_distance, center_of_mass)
+    
+    interior = np.array(interior_points_by_angle, dtype=np.int32)
+    rect = cv2.minAreaRect(interior)
+    box = cv2.boxPoints(rect)
+    box = np.intp(box)
+    
+    interior_rotation = get_angle(box[0], box[1])
+    
+    return interior_rotation
+
+def get_end_points(img):    
+    center_of_mass = get_center_of_largest_contour(img)
+    contour_points = get_board_contour_points(img)
+    #center_of_mass = get_center_of_mass(contour_points)
+
+    points = get_points_sorted_by_distance(contour_points, center_of_mass)
+    
+    ### contour_points should be 12
+    exterior_points_by_distance = points[-8:]
+    exterior_points_by_angle = get_points_sorted_by_angle(exterior_points_by_distance, center_of_mass)
+    
+    return exterior_points_by_angle
+
+def add_channel_to_grayscale(img):
+    return np.stack((img,)*3, axis=-1)
+
+def get_distance(p1, p2):
+    return ((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2) ** 0.5
+    
 def get_bounding_contour(thresh):
     coords = cv2.findNonZero(thresh)
     x,y,w,h = cv2.boundingRect(coords)
     ctr = np.array([(x, y), (x+w, y), (x+w, y+h), (x, y+h)]).reshape((-1,1,2)).astype(np.int32)
+    
     return ctr
 
 def get_farthest_end_points(end_points, count):
@@ -115,10 +122,11 @@ def sort_end_points_by_angle(end_points, center_of_mass):
     
     return sorted_end_points
 
-def rotate_image(img, angle):
+def rotate_image(img, angle, background):
     image_center = tuple(np.array(img.shape[1::-1]) / 2)
     rot_mat = cv2.getRotationMatrix2D(image_center, angle, 1.0)
-    result = cv2.warpAffine(img, rot_mat, img.shape[1::-1], flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(255,255,255))
+    result = cv2.warpAffine(img, rot_mat, img.shape[1::-1], flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=background)
+    
     return result
                            
 def get_bounding_box(img):    
@@ -127,6 +135,7 @@ def get_bounding_box(img):
     rectangle = cv2.minAreaRect(contours[0])
     _, _, rot = rectangle
     box = np.intp(cv2.boxPoints(rectangle))    
+    
     return [box, rot] 
 
 def get_center_of_mass(points):
@@ -156,12 +165,14 @@ def get_center_of_largest_contour(img):
 
     x, y, w, h = cv2.boundingRect(max_area_contour)
     center_of_mass = get_center_of_mass([[x, y], [x + w, y], [x, y + h], [x + w, y + h]])
+    
     return center_of_mass
 
 def get_angle(point1, point2):
     angle = math.atan2((point2[0] - point1[0]), (point2[1] - point1[1]))
     degrees = math.degrees(angle)
-    degrees = 360 - (540 + degrees) % 360
+    degrees = (180 + degrees) % 360
+    
     return degrees
 
 def get_rotational_loss(end_points):    
@@ -175,6 +186,7 @@ def get_rotational_loss(end_points):
     horiz_line_1 = get_angle(end_points[5], end_points[2])
     
     loss = (vert_line_0)**2 + (vert_line_1)**2 + (90 - horiz_line_0)**2 + (90 - horiz_line_1)**2
+    
     return loss
 
 def line_intersection(line1, line2):
@@ -192,6 +204,7 @@ def line_intersection(line1, line2):
     d = (det(*line1), det(*line2))
     x = det(d, xdiff) / div
     y = det(d, ydiff) / div
+    
     return int(x), int(y)
 
 def get_cells(end_points):
@@ -224,32 +237,24 @@ def get_cells(end_points):
    
     return contours;
 
-def find_solidity(contours):
-    contourArea = cv2.contourArea(contours)
-    convexHull = cv2.convexHull(contours)
-    contour_hull_area = cv2.contourArea(convexHull)
-    solidity = float(contourArea)/contour_hull_area
-    return solidity
-
-def find_equi_diameter(contours):
-    area = cv2.contourArea(contours)
-    equi_diameter = np.sqrt(4*area/np.pi)
-    return equi_diameter
-
-def point_in_hull(point, hull, tolerance=1e-12):
-    return all(
-        (np.dot(eq[:-1], point) + eq[-1] <= tolerance)
-        for eq in hull.equations)
- 
 def get_board_contour_points(img):
     points = []
     contours, _ = cv2.findContours(img, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
     selected_contour = max(contours, key=lambda x: cv2.contourArea(x))
     approx = cv2.approxPolyDP(selected_contour, 0.0068 * cv2.arcLength(selected_contour, True), True)
 
-    for p in approx:
-        points.append([p[0][0], p[0][1]])
+    for candidate in approx:
+        p = ([candidate[0][0], candidate[0][1]])
+        is_close = False
         
+        for q in points:
+            if get_distance(p, q) < 25:  ### variabilize
+                is_close = True
+                break
+        
+        if is_close == False:
+            points.append(p)
+    
     return points
 
 def test_end_point_orthogonality(points):
@@ -260,6 +265,11 @@ def test_end_point_orthogonality(points):
     vert_line_0 = get_angle(points[6], points[1])
     vert_line_1 = get_angle(points[5], points[2])
 
+    print(180 - horiz_line_0)
+    print(180 - horiz_line_1)
+    print(90 - vert_line_0)
+    print(90 - vert_line_1)
+
     if abs(180 - horiz_line_0) > tolerance \
         or abs(180 - horiz_line_1) > tolerance \
         or abs(90 - vert_line_0) > tolerance \
@@ -267,8 +277,11 @@ def test_end_point_orthogonality(points):
         raise Exception("Failed to detect gameboard, lines do not appear orthogonal")
    
 def read_cells(board, img, cells):   
-    contours, _ = cv2.findContours(img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    x, y, w, h = cv2.boundingRect(cells[0])
+    thin = cv2.ximgproc.thinning(img)
+    inverse = thin # (255 - thin)     
+    contours, _ = cv2.findContours(thin, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        
+    _, _, w, h = cv2.boundingRect(cells[0])
     min_area = .05 * w * h
     max_area = .8 * w * h
     x_contours = []
@@ -278,7 +291,6 @@ def read_cells(board, img, cells):
         if board[j] == " ":
             for i, contour in enumerate(contours):
                 content = read_cell(contour, cell, min_area, max_area)                
-                   
                 if content != None:
                     board[j] = content
                     
@@ -307,10 +319,15 @@ def read_cell(contour, cell, min_area, max_area):
             hullArea = cv2.contourArea(hull)
             solidity = (contour_area) / float(hullArea)            
             return "O" if solidity > .5 else "X"
-            
-def get_decorated_gameboard(img, end_points, cells, x_contours, o_contours):    
+ 
+def get_empty_image(img, color):
     h, w, c = img.shape
-    decorated = 0 * np.ones(shape=(h, w, c), dtype=np.uint8)
+    empty = color * np.ones(shape=(h, w, c), dtype=np.uint8)
+     
+    return empty
+           
+def get_decorated_gameboard(img, end_points, cells, x_contours, o_contours):    
+    decorated = img.copy() 
 
     for contour in x_contours:
         cv2.drawContours(decorated, [contour], 0, (0, 255, 0), 3)
@@ -330,8 +347,8 @@ def get_decorated_gameboard(img, end_points, cells, x_contours, o_contours):
     return decorated
 
 def get_virtual_gameboard(img, board):
-    spacing = 100
-    offset_x = 120
+    spacing = 120
+    offset_x = 140
     offset_y = 70
     o_radius = int(spacing / 5)
     x_length = int(spacing / 7)
@@ -348,6 +365,9 @@ def get_virtual_gameboard(img, board):
             offset_x + line[1][0]*spacing, \
             offset_y + line[1][1]*spacing), (0, 0, 255), 4)
 
+    if len(board) != 9:
+        return virtual
+    
     for i in range(0, 3):
         for j in range(0, 3):
             content = board[i * 3 + j]
@@ -364,39 +384,43 @@ def get_virtual_gameboard(img, board):
     
     return virtual
 
-
+def interpret(img):
+    copy, gray, blur, thresh, processed = pre_process(img)
     
-original = cv2.imread(image_path)
-copy = cv2.resize(original, (0,0), fx=0.5, fy=0.5) 
-gray, blur, thresh, processed = pre_process(copy)
-rotated, gray, thresh, processed = rotate_to_orthogonal(copy, processed, gray)
+    try:
+        rotation = get_rotation(processed)
+        rotated = rotate_image(processed, (630 - rotation) % 360, (0,0,0))
+        colored = add_channel_to_grayscale(rotated)
 
-center_of_mass = get_center_of_largest_contour(thresh)
-contour_points = get_board_contour_points(thresh)
-end_points = get_end_points(contour_points, center_of_mass, 8)
-cells = get_cells(end_points)
+        end_points = get_end_points(rotated)
+        cells = get_cells(end_points)
 
-#corner_top_left = (min(end_points[5][0], end_points[6][0]), min(end_points[7][1], end_points[0][1]))
-#corner_top_right = (max(end_points[1][0], end_points[2][0]), min(end_points[7][1], end_points[0][1]))
-#corner_bottom_left = (min(end_points[5][0], end_points[6][0]), max(end_points[4][1], end_points[3][1]))
-#corner_bottom_right = (max(end_points[1][0], end_points[2][0]), max(end_points[4][1], end_points[3][1]))
+        board = [' '] * 9
+        board, x_contours, o_contours = read_cells(board, rotated, cells)
 
-#board_width = (corner_top_right[0] + corner_bottom_right[0]) / 2 - (corner_top_left[0] + corner_bottom_left[0]) / 2 
-#board_height = (corner_bottom_left[1] + corner_bottom_right[1]) / 2 - (corner_top_left[1] + corner_top_right[1]) / 2
+        decorated = get_decorated_gameboard(colored, end_points, cells, x_contours, o_contours)
+        virtual = get_virtual_gameboard(colored, board)
 
-board = [' '] * 9
-board, x_contours, o_contours = read_cells(board, thresh, cells)
+        left = np.concatenate((copy, decorated), axis=0)
+        right = np.concatenate((colored, virtual), axis=0)
+        final = np.concatenate((left, right), axis=1)
+        
+        return final
 
-decorated = get_decorated_gameboard(rotated, end_points, cells, x_contours, o_contours)
-virtual = get_virtual_gameboard(rotated, board)
-
-left = np.concatenate((copy, decorated), axis=0)
-right = np.concatenate((add_channel_to_grayscale(thresh), virtual), axis=0)
-final = np.concatenate((left, right), axis=1)
-cv2.imshow(f'Tic tac toe', final) 
+    except:
+        empty = get_empty_image(copy, 0)
+        virtual = get_virtual_gameboard(copy, [])
+        left = np.concatenate((copy, empty), axis=0)
+        right = np.concatenate((add_channel_to_grayscale(processed), virtual), axis=0)
+        final = np.concatenate((left, right), axis=1)
+        
+        return final
+        
+    
+"""
+interpret(cv2.imread('images/hash-8a.png'))
+#interpret(cv2.imread('images/hash-9a.png'))
 
 if cv2.waitKey(0) & 0xff == 27:  
     cv2.destroyAllWindows()
-    
-    
-    
+"""
