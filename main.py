@@ -276,9 +276,9 @@ def test_end_point_orthogonality(points):
         or abs(90 - vert_line_1) > tolerance:
         raise Exception("Failed to detect gameboard, lines do not appear orthogonal")
    
-def read_cells(board, img, cells):   
+def read_cells(current_board, img, cells):  
+    board = [' '] * 9 
     thin = cv2.ximgproc.thinning(img)
-    inverse = thin # (255 - thin)     
     contours, _ = cv2.findContours(thin, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         
     _, _, w, h = cv2.boundingRect(cells[0])
@@ -288,9 +288,10 @@ def read_cells(board, img, cells):
     o_contours = []
     
     for j, cell in enumerate(cells):
-        if board[j] == " ":
-            for i, contour in enumerate(contours):
-                content = read_cell(contour, cell, min_area, max_area)                
+        if current_board[j] == " ":
+            for contour in contours:
+                content = read_cell(contour, cell, min_area, max_area)
+                
                 if content != None:
                     board[j] = content
                     
@@ -298,7 +299,9 @@ def read_cells(board, img, cells):
                         x_contours.append(contour)
                     else:
                         o_contours.append(contour)
-    
+        else:
+            board[j] = current_board[j]
+      
     return board, x_contours, o_contours
 
 def read_cell(contour, cell, min_area, max_area):
@@ -384,7 +387,7 @@ def get_virtual_gameboard(img, board):
     
     return virtual
 
-def interpret(img):
+def interpret(img, current_board):
     copy, gray, blur, thresh, processed = pre_process(img)
     
     try:
@@ -396,25 +399,25 @@ def interpret(img):
         cells = get_cells(end_points)
 
         board = [' '] * 9
-        board, x_contours, o_contours = read_cells(board, rotated, cells)
+        board, x_contours, o_contours = read_cells(current_board, rotated, cells)
 
         decorated = get_decorated_gameboard(colored, end_points, cells, x_contours, o_contours)
-        virtual = get_virtual_gameboard(colored, board)
+        virtual = get_virtual_gameboard(colored, current_board)
 
         left = np.concatenate((copy, decorated), axis=0)
         right = np.concatenate((colored, virtual), axis=0)
         final = np.concatenate((left, right), axis=1)
         
-        return final
+        return final, board
 
     except:
         empty = get_empty_image(copy, 0)
-        virtual = get_virtual_gameboard(copy, [])
+        virtual = get_virtual_gameboard(copy, current_board)
         left = np.concatenate((copy, empty), axis=0)
         right = np.concatenate((add_channel_to_grayscale(processed), virtual), axis=0)
         final = np.concatenate((left, right), axis=1)
         
-        return final
+        return final, None
         
     
 """
