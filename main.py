@@ -1,6 +1,7 @@
 import math
 import cv2
 import numpy as np
+from engine import getBestMove
 
 def pre_process(img):
     max_width, max_height = 640, 480
@@ -70,11 +71,8 @@ def get_rotation(img):
 def get_end_points(img):    
     center_of_mass = get_center_of_largest_contour(img)
     contour_points = get_board_contour_points(img)
-    #center_of_mass = get_center_of_mass(contour_points)
-
     points = get_points_sorted_by_distance(contour_points, center_of_mass)
     
-    ### contour_points should be 12
     exterior_points_by_distance = points[-8:]
     exterior_points_by_angle = get_points_sorted_by_angle(exterior_points_by_distance, center_of_mass)
     
@@ -93,21 +91,6 @@ def get_bounding_contour(thresh):
     
     return ctr
 
-def get_farthest_end_points(end_points, count):
-    distances = []    
-    bounds = get_bounding_contour(thresh)
-    
-    for i, p in enumerate(end_points):
-        distance = cv2.pointPolygonTest(bounds, (int(p[0]), int(p[1])), True)
-        distances.append(distance)
-
-    arr1 = np.array(distances)
-    arr2 = np.array(end_points)    
-    indexes = arr1.argsort()
-    sorted_distances = arr2[indexes]
-    
-    return sorted_distances[:count]
-    
 def sort_end_points_by_angle(end_points, center_of_mass):
     angles = []
     
@@ -316,7 +299,7 @@ def read_cell(contour, cell, min_area, max_area):
         
         if a1+a2+a3+a4 != 4:
             return None
-        else:                        
+        else:                     
             contour_area = cv2.contourArea(contour)
             hull = cv2.convexHull(contour)
             hullArea = cv2.contourArea(hull)
@@ -420,10 +403,27 @@ def interpret(img, current_board):
         return final, None
         
     
-"""
-interpret(cv2.imread('images/hash-8a.png'))
-#interpret(cv2.imread('images/hash-9a.png'))
+# Example board state as a nine-element array
+
+
+current_board = [' '] * 9 
+#interpret(cv2.imread('images/hash-8a.png'))
+final, board = interpret(cv2.imread('images/hash-9b.png'), current_board)
+
+board = [' '] * 9
+game_state = [board[0:3], board[3:6], board[6:9]]
+   
+
+for i in range(0,9):
+    player = "X" if i % 2 == 0 else "O"
+    best, best_move = getBestMove(game_state, player)
+    board[best_move] = player
+    game_state = [board[0:3], board[3:6], board[6:9]]
+    print(game_state[0])
+    print(game_state[1])
+    print(game_state[2])
+    print("")
+#cv2.imshow("ttt", final)
 
 if cv2.waitKey(0) & 0xff == 27:  
     cv2.destroyAllWindows()
-"""

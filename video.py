@@ -6,12 +6,14 @@ cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
 frame = 0
 votes_required = 5
 candidate_board = None
-board = [' '] * 9
+board = [" "] * 9
 votes = 0
+
 
 while True:
     success, original = cap.read()
     final, latest_board = interpret(original, board)
+    print(latest_board)
     cv2.imshow(f'Tic tac toe', final) 
     cv2.waitKey(1)
     frame += 1
