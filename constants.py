@@ -1,0 +1,8 @@
+X = "X"
+O = "O"
+EMPTY = " "
+GAME_DONE = "Done"
+GAME_DRAW = "Draw"
+GAME_ACTIVE = "Active"
+KEY_INDEX = "index"
+KEY_SCORE = "score"

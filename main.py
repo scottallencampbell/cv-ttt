@@ -1,7 +1,8 @@
 import math
 import cv2
 import numpy as np
-from engine import getBestMove
+from engine import get_best_move, check_current_state
+from constants import *
 
 def pre_process(img):
     max_width, max_height = 640, 480
@@ -260,7 +261,7 @@ def test_end_point_orthogonality(points):
         raise Exception("Failed to detect gameboard, lines do not appear orthogonal")
    
 def read_cells(current_board, img, cells):  
-    board = [' '] * 9 
+    board = [EMPTY] * 9 
     thin = cv2.ximgproc.thinning(img)
     contours, _ = cv2.findContours(thin, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         
@@ -278,7 +279,7 @@ def read_cells(current_board, img, cells):
                 if content != None:
                     board[j] = content
                     
-                    if content == "X":
+                    if content == X:
                         x_contours.append(contour)
                     else:
                         o_contours.append(contour)
@@ -304,7 +305,7 @@ def read_cell(contour, cell, min_area, max_area):
             hull = cv2.convexHull(contour)
             hullArea = cv2.contourArea(hull)
             solidity = (contour_area) / float(hullArea)            
-            return "O" if solidity > .5 else "X"
+            return O if solidity > .5 else X
  
 def get_empty_image(img, color):
     h, w, c = img.shape
@@ -362,9 +363,9 @@ def get_virtual_gameboard(img, board):
                 x = int(spacing * 1 * j + offset_x + spacing / 2)
                 y = int(spacing * 1* i + offset_y + spacing / 2)
                 
-                if content == "O":
+                if content == O:
                     cv2.circle(virtual, (x,y), o_radius, (255, 255, 0), stroke)
-                elif content == "X":
+                elif content == X:
                     cv2.line(virtual, (x-x_length, y-x_length), (x+x_length, y+x_length), (0, 255, 0), stroke)
                     cv2.line(virtual, (x+x_length, y-x_length), (x-x_length, y+x_length), (0, 255, 0), stroke)
     
@@ -381,7 +382,7 @@ def interpret(img, current_board):
         end_points = get_end_points(rotated)
         cells = get_cells(end_points)
 
-        board = [' '] * 9
+        board = [EMPTY] * 9
         board, x_contours, o_contours = read_cells(current_board, rotated, cells)
 
         decorated = get_decorated_gameboard(colored, end_points, cells, x_contours, o_contours)
@@ -406,17 +407,22 @@ def interpret(img, current_board):
 # Example board state as a nine-element array
 
 
-current_board = [' '] * 9 
+current_board = [EMPTY] * 9 
 #interpret(cv2.imread('images/hash-8a.png'))
 final, board = interpret(cv2.imread('images/hash-9b.png'), current_board)
 
-board = [' '] * 9
-game_state = [board[0:3], board[3:6], board[6:9]]
-   
+board = [EMPTY] * 9
+game_state = [[EMPTY] * 3] * 3
 
 for i in range(0,9):
-    player = "X" if i % 2 == 0 else "O"
-    best, best_move = getBestMove(game_state, player)
+    _, state = check_current_state(game_state)
+    
+    if state != GAME_ACTIVE:
+        print(state)
+        exit()
+        
+    player = X if i % 2 == 0 else O
+    best, best_move = get_best_move(game_state, player)
     board[best_move] = player
     game_state = [board[0:3], board[3:6], board[6:9]]
     print(game_state[0])
