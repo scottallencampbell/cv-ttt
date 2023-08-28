@@ -1,8 +1,7 @@
 X = "X"
 O = "O"
 EMPTY = " "
-GAME_DONE = "Done"
-GAME_DRAW = "Draw"
-GAME_ACTIVE = "Active"
-KEY_INDEX = "index"
-KEY_SCORE = "score"
+GAME_X_WINS = 10
+GAME_O_WINS = -10
+GAME_ACTIVE = 0
+GAME_DRAW = None

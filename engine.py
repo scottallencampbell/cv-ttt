@@ -1,105 +1,100 @@
-# Adapted from https://github.com/agrawal-rohit/tic-tac-toe-bot/blob/master/HumanvsAI_Minimax.py
+# Adapted from https://stackoverflow.com/questions/72739112/mini-max-not-giving-optimal-move-tic-tac-toe
 
 from math import inf as infinity
 from constants import *
 
-players = [X,O]
-
-def play_move(state, player, block_num):
-    if state[int((block_num)/3)][(block_num)%3] == EMPTY:
-        state[int((block_num)/3)][(block_num)%3] = player
-    else:
-        raise Exception(f"Failed to play cell {block_num}, the cell is not empty")
-        
-def copy_game_state(state):
-    #new_state = [[EMPTY] * 3] * 3    #  engine doesn't work with this .... but why???
-    new_state = [[EMPTY, EMPTY, EMPTY], [EMPTY, EMPTY, EMPTY], [EMPTY, EMPTY, EMPTY]]
-    for i in range(3):
-        for j in range(3):
-            new_state[i][j] = state[i][j]
-    return new_state
-    
-def check_current_state(game_state):
-    # Check horizontals
-    if (game_state[0][0] == game_state[0][1] and game_state[0][1] == game_state[0][2] and game_state[0][0] != EMPTY):
-        return game_state[0][0], GAME_DONE
-    if (game_state[1][0] == game_state[1][1] and game_state[1][1] == game_state[1][2] and game_state[1][0] != EMPTY):
-        return game_state[1][0], GAME_DONE
-    if (game_state[2][0] == game_state[2][1] and game_state[2][1] == game_state[2][2] and game_state[2][0] != EMPTY):
-        return game_state[2][0], GAME_DONE
-    
-    # Check verticals
-    if (game_state[0][0] == game_state[1][0] and game_state[1][0] == game_state[2][0] and game_state[0][0] != EMPTY):
-        return game_state[0][0], GAME_DONE
-    if (game_state[0][1] == game_state[1][1] and game_state[1][1] == game_state[2][1] and game_state[0][1] != EMPTY):
-        return game_state[0][1], GAME_DONE
-    if (game_state[0][2] == game_state[1][2] and game_state[1][2] == game_state[2][2] and game_state[0][2] != EMPTY):
-        return game_state[0][2], GAME_DONE
-    
-    # Check diagonals
-    if (game_state[0][0] == game_state[1][1] and game_state[1][1] == game_state[2][2] and game_state[0][0] != EMPTY):
-        return game_state[1][1], GAME_DONE
-    if (game_state[2][0] == game_state[1][1] and game_state[1][1] == game_state[0][2] and game_state[2][0] != EMPTY):
-        return game_state[1][1], GAME_DONE
-    
-    # Check if draw
-    draw_flag = 0
-    for i in range(3):
-        for j in range(3):
-            if game_state[i][j] == EMPTY:
-                draw_flag = 1
-    if draw_flag == 0:
-        return None, GAME_DRAW
-    
-    return None, GAME_ACTIVE
-    
-def get_best_move(state, player):
+def rate_state(state):
     '''
-    Minimax Algorithm
+    this def is returning
+    GAME_X_WINS if X wins
+    GAME_Y_WINS if O wins 
+    GAME_ACTIVE if nothing 
+    GAME_DRAW if draw
     '''
-    winner_loser , done = check_current_state(state)
-    if done == GAME_DONE and winner_loser == O: # If AI won
-        return (1,0)
-    elif done == GAME_DONE and winner_loser == X: # If Human won
-        return (-1,0)
-    elif done == GAME_DRAW:    # Draw condition
-        return (0,0)
-        
-    moves = []
-    empty_cells = []
-    for i in range(3):
-        for j in range(3):
-            if state[i][j] == EMPTY:
-                empty_cells.append(i*3 + j)
+    ter = terminate(state)
     
-    for empty_cell in empty_cells:
-        move = {}
-        move[KEY_INDEX] = empty_cell
-        new_state = copy_game_state(state)
-        play_move(new_state, player, empty_cell)
+    if ter != False:
+        if state[ter[0]] == X:
+            return GAME_X_WINS
+        elif state[ter[0]] == O:
+            return GAME_O_WINS
         
-        if player == O:    # If AI
-            result,_ = get_best_move(new_state, X)    # make more depth tree for human
-            move[KEY_SCORE] = result
-        else:
-            result,_ = get_best_move(new_state, O)    # make more depth tree for AI
-            move[KEY_SCORE] = result
+    is_draw = True
+    
+    for ws in state:
+        if ws == EMPTY:
+            is_draw = False
+    
+    return GAME_DRAW if is_draw == True else GAME_ACTIVE
+            
+def terminate(state):
+    '''
+    this def is returning
+    position of same X or O in a line
+    or False if board full not wins 
+    '''
+    win_pos = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]]
+    
+    for ws in win_pos:
+        if state[ws[0]] != EMPTY and state[ws[0]] == state[ws[1]] and state[ws[0]] == state[ws[2]]:            
+            return [ws[0], ws[1], ws[2]]
         
-        moves.append(move)
+    return False
 
-    # Find best move
-    best_move = None
-    if player == O:   # If AI player
-        best = -infinity
-        for move in moves:            
-            if move[KEY_SCORE] > best:
-                best = move[KEY_SCORE]
-                best_move = move[KEY_INDEX]
+def get_best_move(board, player):
+    best_score = -1000
+    best_move = 0
+    isMax = player == O
+    
+    for i in range(len(board)):
+        if board[i] != EMPTY:
+            continue
+        
+        board[i] = X
+
+        move_score = deep(board, isMax)
+
+        if move_score > best_score:
+            best_score = move_score
+            best_move = i
+
+        board[i] = O
+
+        move_score = -deep(board, isMax)
+
+        if move_score > best_score:
+            best_score = move_score
+            best_move = i
+
+        board[i] = EMPTY
+
+    return best_move
+
+def deep(state, isMax):
+    state_score = rate_state(state)
+    
+    if state_score == GAME_X_WINS:
+        return state_score
+    elif state_score == GAME_O_WINS:
+        return state_score
+    
+    if terminate(state) == False:
+        return 0
+    
+    if isMax:
+        score = -1000
+        for itr in range(len(state)):
+            if state[itr] == EMPTY:
+                state[itr] = X
+                score = max(score, deep(state, False))
+                state[itr] = EMPTY
+        return score
+    
     else:
-        best = infinity
-        for move in moves:
-            if move[KEY_SCORE] < best:
-                best = move[KEY_SCORE]
-                best_move = move[KEY_INDEX]
-                
-    return (best, best_move)
+        score = 1000
+        for itr in range(len(state)):
+            if state[itr] == EMPTY:
+                state[itr] = O
+                score = min(score, deep(state, True))
+                state[itr] = EMPTY
+        return score

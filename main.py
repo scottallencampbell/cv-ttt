@@ -1,7 +1,7 @@
 import math
 import cv2
 import numpy as np
-from engine import get_best_move, check_current_state
+from engine import get_best_move, rate_state
 from constants import *
 
 def pre_process(img):
@@ -402,34 +402,43 @@ def interpret(img, current_board):
         final = np.concatenate((left, right), axis=1)
         
         return final, None
-        
     
 # Example board state as a nine-element array
-
 
 current_board = [EMPTY] * 9 
 #interpret(cv2.imread('images/hash-8a.png'))
 final, board = interpret(cv2.imread('images/hash-9b.png'), current_board)
+cv2.imshow("ttt", final)
 
-board = [EMPTY] * 9
-game_state = [[EMPTY] * 3] * 3
+
+print(board[0:3])
+print(board[3:6])
+print(board[6:9])
+print("")
 
 for i in range(0,9):
-    _, state = check_current_state(game_state)
+    #_, state = check_current_state(game_state)
     
-    if state != GAME_ACTIVE:
-        print(state)
-        exit()
+    #if state != GAME_ACTIVE:
+    #    print(state)
+    #    exit()
         
     player = X if i % 2 == 0 else O
-    best, best_move = get_best_move(game_state, player)
+    rating = rate_state(board)
+    print(player, rating)
+    
+    if rating != GAME_ACTIVE:
+        exit()
+        
+    best_move = get_best_move(board, player)
+    #print(rating, best_move)
     board[best_move] = player
-    game_state = [board[0:3], board[3:6], board[6:9]]
-    print(game_state[0])
-    print(game_state[1])
-    print(game_state[2])
+   
+    print(board[0:3])
+    print(board[3:6])
+    print(board[6:9])
     print("")
-#cv2.imshow("ttt", final)
+
 
 if cv2.waitKey(0) & 0xff == 27:  
     cv2.destroyAllWindows()
