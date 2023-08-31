@@ -1,100 +1,184 @@
-# Adapted from https://stackoverflow.com/questions/72739112/mini-max-not-giving-optimal-move-tic-tac-toe
+# Adapted from https://www.geeksforgeeks.org/finding-optimal-move-in-tic-tac-toe-using-minimax-algorithm-in-game-theory/
 
-from math import inf as infinity
+# This function returns true if there are moves
+# remaining on the board. It returns false if
+# there are no moves left to play.
 from constants import *
 
-def rate_state(state):
-    '''
-    this def is returning
-    GAME_X_WINS if X wins
-    GAME_Y_WINS if O wins 
-    GAME_ACTIVE if nothing 
-    GAME_DRAW if draw
-    '''
-    ter = terminate(state)
-    
-    if ter != False:
-        if state[ter[0]] == X:
-            return GAME_X_WINS
-        elif state[ter[0]] == O:
-            return GAME_O_WINS
-        
-    is_draw = True
-    
-    for ws in state:
-        if ws == EMPTY:
-            is_draw = False
-    
-    return GAME_DRAW if is_draw == True else GAME_ACTIVE
-            
-def terminate(state):
-    '''
-    this def is returning
-    position of same X or O in a line
-    or False if board full not wins 
-    '''
-    win_pos = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]]
-    
-    for ws in win_pos:
-        if state[ws[0]] != EMPTY and state[ws[0]] == state[ws[1]] and state[ws[0]] == state[ws[2]]:            
-            return [ws[0], ws[1], ws[2]]
-        
-    return False
+def are_moves_left(board):
 
-def get_best_move(board, player):
-    best_score = -1000
-    best_move = 0
-    isMax = player == O
-    
-    for i in range(len(board)):
-        if board[i] != EMPTY:
-            continue
-        
-        board[i] = X
+	for i in range(3):
+		for j in range(3):
+			if (board[i][j] == EMPTY):
+				return True
+	return False
 
-        move_score = deep(board, isMax)
+# This is the evaluation function as discussed
+# in the previous article ( http://goo.gl/sJgv68 )
 
-        if move_score > best_score:
-            best_score = move_score
-            best_move = i
+def get_state(flat_board):
+	board = [flat_board[0:3], flat_board[3:6], flat_board[6:9]]
+	ev, win_type, win_info = evaluate(board, X)
+	xs = 0
+	os = 0
+ 
+	for item in flat_board:
+		if item == X:
+			xs += 1
+		elif item == O:
+			os += 1
+   
+	turn = O if xs > os else X
+ 
+	if ev == 10:
+		state = GAME_X_WON
+		turn = X
+	elif ev == -10:
+		state = GAME_O_WON
+		turn = O
+	elif are_moves_left(board):
+		state = GAME_ACTIVE
+	else:
+		state = GAME_DRAWN
+ 
+	return state, turn, win_type, win_info
 
-        board[i] = O
+def evaluate(b, player):
+	opponent = -player
+	# Checking for Rows for X or O victory.
+	for row in range(3):	
+		if (b[row][0] == b[row][1] and b[row][1] == b[row][2]):		
+			if (b[row][0] == player):
+				return 10, "row", row
+			elif (b[row][0] == opponent):
+				return -10, "row", row
 
-        move_score = -deep(board, isMax)
+	# Checking for Columns for X or O victory.
+	for col in range(3):
+	
+		if (b[0][col] == b[1][col] and b[1][col] == b[2][col]):
+		
+			if (b[0][col] == player):
+				return 10, "col", col
+			elif (b[0][col] == opponent):
+				return -10, "col", col
 
-        if move_score > best_score:
-            best_score = move_score
-            best_move = i
+	# Checking for Diagonals for X or O victory.
+	if (b[0][0] == b[1][1] and b[1][1] == b[2][2]):
+	
+		if (b[0][0] == player):
+			return 10, "diag", -1
+		elif (b[0][0] == opponent):
+			return -10, "diag", -1
 
-        board[i] = EMPTY
+	if (b[0][2] == b[1][1] and b[1][1] == b[2][0]):
+	
+		if (b[0][2] == player):
+			return 10, "diag", 1
+		elif (b[0][2] == opponent):
+			return -10, "diag", 1
 
-    return best_move
+	# Else if none of them have won then return 0
+	return 0, None, 0
 
-def deep(state, isMax):
-    state_score = rate_state(state)
-    
-    if state_score == GAME_X_WINS:
-        return state_score
-    elif state_score == GAME_O_WINS:
-        return state_score
-    
-    if terminate(state) == False:
-        return 0
-    
-    if isMax:
-        score = -1000
-        for itr in range(len(state)):
-            if state[itr] == EMPTY:
-                state[itr] = X
-                score = max(score, deep(state, False))
-                state[itr] = EMPTY
-        return score
-    
-    else:
-        score = 1000
-        for itr in range(len(state)):
-            if state[itr] == EMPTY:
-                state[itr] = O
-                score = min(score, deep(state, True))
-                state[itr] = EMPTY
-        return score
+# This is the minimax function. It considers all
+# the possible ways the game can go and returns
+# the value of the board
+def minimax(board, player, depth, isMax):
+	opponent = -player
+	score, _, _ = evaluate(board, player)
+
+	# If Maximizer has won the game return his/her
+	# evaluated score
+	if (score == 10):
+		return score-depth
+
+	# If Minimizer has won the game return his/her
+	# evaluated score
+	if (score == -10):
+		return score+depth
+
+	# If there are no more moves and no winner then
+	# it is a tie
+	if (are_moves_left(board) == False):
+		return 0
+
+	# If this maximizer's move
+	if (isMax):	
+		best = -1000
+
+		# Traverse all cells
+		for i in range(3):		
+			for j in range(3):
+			
+				# Check if cell is empty
+				if (board[i][j]==EMPTY):
+				
+					# Make the move
+					board[i][j] = player
+
+					# Call minimax recursively and choose
+					# the maximum value
+					best = max(best, minimax(board, player, depth + 1, not isMax) )
+
+					# Undo the move
+					board[i][j] = EMPTY
+		return best
+
+	# If this minimizer's move
+	else:
+		best = 1000
+
+		# Traverse all cells
+		for i in range(3):		
+			for j in range(3):
+			
+				# Check if cell is empty
+				if (board[i][j] == EMPTY):
+				
+					# Make the move
+					board[i][j] = opponent
+
+					# Call minimax recursively and choose
+					# the minimum value
+					best = min(best, minimax(board, player, depth + 1, not isMax))
+
+					# Undo the move
+					board[i][j] = EMPTY
+		return best
+
+# This will return the best possible move for the player
+def find_best_move(flat_board, player):
+	board = [flat_board[0:3], flat_board[3:6], flat_board[6:9]]
+ 
+	bestVal = -1000
+	bestMove = (-1, -1)
+
+	# Traverse all cells, evaluate minimax function for
+	# all empty cells. And return the cell with optimal
+	# value.
+	for i in range(3):	
+		for j in range(3):
+		
+			# Check if cell is empty
+			if (board[i][j] == EMPTY):
+			
+				# Make the move
+				board[i][j] = player
+
+				# compute evaluation function for this
+				# move.
+				moveVal = minimax(board, player, 0, False)
+
+				# Undo the move
+				board[i][j] = EMPTY
+
+				# If the value of the current move is
+				# more than the best value, then update
+				# best/
+				if (moveVal > bestVal):				
+					bestMove = (i, j)
+					bestVal = moveVal
+
+	return bestMove[0] * 3 + bestMove[1]
+
